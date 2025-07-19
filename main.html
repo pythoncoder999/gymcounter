@@ -153,6 +153,117 @@
             font-weight: bold;
         }
 
+        .challenge-section {
+            background: linear-gradient(145deg, #FF6B35, #FF8E53);
+            color: white;
+            padding: 25px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+            text-align: center;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+            100% { transform: scale(1); }
+        }
+
+        .challenge-section h2 {
+            font-size: 1.8rem;
+            margin-bottom: 15px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .countdown {
+            font-size: 3rem;
+            font-weight: bold;
+            margin: 15px 0;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .weight-tracker {
+            background: linear-gradient(145deg, #667eea, #764ba2);
+            color: white;
+            padding: 25px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+        }
+
+        .weight-input-section {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .weight-input {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 25px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            text-align: center;
+            width: 120px;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .weight-btn {
+            background: linear-gradient(145deg, #4CAF50, #45a049);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 25px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .weight-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .current-weight {
+            text-align: center;
+            font-size: 1.5rem;
+            margin-bottom: 15px;
+        }
+
+        .progress-bar {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 25px;
+            height: 20px;
+            margin: 15px 0;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            background: linear-gradient(90deg, #4CAF50, #8BC34A);
+            height: 100%;
+            border-radius: 25px;
+            transition: width 0.5s ease;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .motivation-quote {
+            background: linear-gradient(145deg, #9C27B0, #E91E63);
+            color: white;
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+            text-align: center;
+            font-style: italic;
+            font-size: 1.2rem;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+        }
+
         .history-section {
             background: rgba(248, 249, 250, 0.8);
             border-radius: 15px;
@@ -250,6 +361,30 @@
             </div>
         </div>
 
+        <div class="challenge-section">
+            <h2>🏆 135lbs Challenge</h2>
+            <div class="countdown" id="countdown">20</div>
+            <p>Days Left to Reach Your Goal!</p>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+            </div>
+            <p id="progress-text">Start your journey today!</p>
+        </div>
+
+        <div class="weight-tracker">
+            <h3 style="text-align: center; margin-bottom: 20px;">⚖️ Weight Tracker</h3>
+            <div class="weight-input-section">
+                <input type="number" id="weight-input" class="weight-input" placeholder="Enter weight" step="0.1" min="0" max="500">
+                <span style="font-size: 1.2rem;">lbs</span>
+                <button class="weight-btn" onclick="logWeight()">Log Weight</button>
+            </div>
+            <div class="current-weight" id="current-weight">No weight logged today</div>
+        </div>
+
+        <div class="motivation-quote" id="motivation-quote">
+            "The only bad workout is the one that didn't happen. Let's crush this challenge!"
+        </div>
+
         <div class="summary">
             <h3>Today's Total Reps</h3>
             <p id="total-reps">0</p>
@@ -273,14 +408,146 @@
         // Data storage object
         let workoutData = {
             daily: {},
-            current: { 20: 0, 30: 0, 40: 0, 50: 0 }
+            current: { 20: 0, 30: 0, 40: 0, 50: 0 },
+            weights: {},
+            challengeStart: new Date().toISOString().split('T')[0],
+            targetWeight: 135
         };
+
+        // Motivational quotes array
+        const motivationalQuotes = [
+            "Every rep brings you closer to your goal! 💪",
+            "135lbs is not just a number, it's your victory waiting to happen! 🏆",
+            "Your body can do it. It's your mind you have to convince! 🧠",
+            "Success isn't given. It's earned in the gym! 🔥",
+            "The pain you feel today will be the strength you feel tomorrow! ⚡",
+            "Champions train, losers complain. Which one are you? 👑",
+            "Your only competition is who you were yesterday! 📈",
+            "Believe in yourself and you're halfway to 135lbs! ✨",
+            "Every drop of sweat is an investment in your future self! 💧",
+            "The countdown is on - make every day count! ⏰",
+            "Discipline is choosing between what you want now and what you want most! 🎯",
+            "Your goals don't have an expiration date. Keep pushing! 🚀",
+            "Strong is not a size, it's a feeling - and you're getting stronger! 💯",
+            "The best project you'll ever work on is YOU! ✨",
+            "135lbs isn't just a destination, it's proof of your dedication! 🏅"
+        ];
+
+        // Calculate days remaining in challenge
+        function calculateDaysRemaining() {
+            const startDate = new Date(workoutData.challengeStart);
+            const targetDate = new Date(startDate.getTime() + (20 * 24 * 60 * 60 * 1000));
+            const today = new Date();
+            const diffTime = targetDate - today;
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            return Math.max(0, diffDays);
+        }
+
+        // Log weight for today
+        function logWeight() {
+            const weightInput = document.getElementById('weight-input');
+            const weight = parseFloat(weightInput.value);
+            
+            if (!weight || weight <= 0) {
+                alert('Please enter a valid weight!');
+                return;
+            }
+            
+            const today = new Date().toISOString().split('T')[0];
+            workoutData.weights[today] = weight;
+            weightInput.value = '';
+            
+            updateWeightDisplay();
+            updateProgressBar();
+            updateMotivation();
+        }
+
+        // Update weight display
+        function updateWeightDisplay() {
+            const today = new Date().toISOString().split('T')[0];
+            const currentWeightElement = document.getElementById('current-weight');
+            
+            if (workoutData.weights[today]) {
+                currentWeightElement.textContent = `Today's Weight: ${workoutData.weights[today]} lbs`;
+            } else {
+                currentWeightElement.textContent = 'No weight logged today';
+            }
+        }
+
+        // Update progress bar based on weight progress
+        function updateProgressBar() {
+            const today = new Date().toISOString().split('T')[0];
+            const currentWeight = workoutData.weights[today];
+            const progressFill = document.getElementById('progress-fill');
+            const progressText = document.getElementById('progress-text');
+            
+            if (currentWeight) {
+                // Find starting weight (first logged weight)
+                const sortedDates = Object.keys(workoutData.weights).sort();
+                const startWeight = sortedDates.length > 0 ? workoutData.weights[sortedDates[0]] : currentWeight;
+                
+                let progress = 0;
+                let progressMessage = '';
+                
+                if (startWeight > workoutData.targetWeight) {
+                    // Weight loss goal
+                    const totalToLose = startWeight - workoutData.targetWeight;
+                    const lostSoFar = startWeight - currentWeight;
+                    progress = Math.max(0, Math.min(100, (lostSoFar / totalToLose) * 100));
+                    progressMessage = `${lostSoFar.toFixed(1)} lbs lost of ${totalToLose.toFixed(1)} lbs goal`;
+                } else {
+                    // Weight gain goal
+                    const totalToGain = workoutData.targetWeight - startWeight;
+                    const gainedSoFar = currentWeight - startWeight;
+                    progress = Math.max(0, Math.min(100, (gainedSoFar / totalToGain) * 100));
+                    progressMessage = `${gainedSoFar.toFixed(1)} lbs gained of ${totalToGain.toFixed(1)} lbs goal`;
+                }
+                
+                progressFill.style.width = `${progress}%`;
+                progressText.textContent = progressMessage;
+                
+                // Check if goal reached
+                if (currentWeight === workoutData.targetWeight) {
+                    progressText.textContent = '🎉 GOAL REACHED! Congratulations! 🎉';
+                    progressFill.style.background = 'linear-gradient(90deg, #FFD700, #FFA500)';
+                }
+            } else {
+                progressFill.style.width = '0%';
+                progressText.textContent = 'Log your weight to see progress!';
+            }
+        }
+
+        // Update countdown and motivation
+        function updateMotivation() {
+            const daysLeft = calculateDaysRemaining();
+            const countdownElement = document.getElementById('countdown');
+            const motivationElement = document.getElementById('motivation-quote');
+            
+            countdownElement.textContent = daysLeft;
+            
+            // Get random motivational quote
+            const randomQuote = motivationalQuotes[Math.floor(Math.random() * motivationalQuotes.length)];
+            motivationElement.textContent = randomQuote;
+            
+            // Special messages based on days left
+            if (daysLeft === 0) {
+                countdownElement.textContent = '🎯';
+                motivationElement.textContent = '🏆 CHALLENGE DAY IS HERE! Show what you\'re made of! 🏆';
+            } else if (daysLeft <= 3) {
+                motivationElement.textContent = '🔥 FINAL PUSH! You\'re so close to victory! 🔥';
+            } else if (daysLeft <= 7) {
+                motivationElement.textContent = '⚡ ONE WEEK LEFT! Time to give it everything you\'ve got! ⚡';
+            }
+        }
 
         // Load data from memory on page load
         function loadData() {
             // Initialize with empty data since we can't use localStorage
             updateDisplay();
             updateHistory();
+            updateWeightDisplay();
+            updateProgressBar();
+            updateMotivation();
         }
 
         // Add a tally for specific rep count
@@ -354,8 +621,9 @@
                 const dayData = workoutData.daily[date];
                 const totalSets = dayData[20] + dayData[30] + dayData[40] + dayData[50];
                 const totalReps = (dayData[20] * 20) + (dayData[30] * 30) + (dayData[40] * 40) + (dayData[50] * 50);
+                const weight = workoutData.weights[date];
                 
-                if (totalSets > 0) {
+                if (totalSets > 0 || weight) {
                     hasData = true;
                     const dateObj = new Date(date);
                     const formattedDate = dateObj.toLocaleDateString('en-US', { 
@@ -365,12 +633,14 @@
                         day: 'numeric' 
                     });
                     
+                    let weightInfo = weight ? ` | Weight: ${weight} lbs` : '';
+                    
                     historyHTML += `
                         <div class="history-entry">
                             <div class="history-date">${formattedDate}</div>
                             <div class="history-details">
-                                Sets: 20×${dayData[20]}, 30×${dayData[30]}, 40×${dayData[40]}, 50×${dayData[50]} | 
-                                Total: ${totalSets} sets, ${totalReps.toLocaleString()} reps
+                                Sets: 20×${dayData ? dayData[20] : 0}, 30×${dayData ? dayData[30] : 0}, 40×${dayData ? dayData[40] : 0}, 50×${dayData ? dayData[50] : 0} | 
+                                Total: ${totalSets} sets, ${totalReps.toLocaleString()} reps${weightInfo}
                             </div>
                         </div>
                     `;
@@ -392,8 +662,13 @@
                 if (workoutData.daily[today]) {
                     delete workoutData.daily[today];
                 }
+                if (workoutData.weights[today]) {
+                    delete workoutData.weights[today];
+                }
                 updateDisplay();
                 updateHistory();
+                updateWeightDisplay();
+                updateProgressBar();
             }
         }
 
@@ -402,26 +677,35 @@
             if (confirm('Are you sure you want to clear ALL workout data? This cannot be undone.')) {
                 workoutData = {
                     daily: {},
-                    current: { 20: 0, 30: 0, 40: 0, 50: 0 }
+                    current: { 20: 0, 30: 0, 40: 0, 50: 0 },
+                    weights: {},
+                    challengeStart: new Date().toISOString().split('T')[0],
+                    targetWeight: 135
                 };
                 updateDisplay();
                 updateHistory();
+                updateWeightDisplay();
+                updateProgressBar();
+                updateMotivation();
             }
         }
 
         // Export data as text
         function exportData() {
             let exportText = 'Fitness Tally Tracker - Workout Data Export\n';
+            exportText += 'Challenge Goal: Reach 135lbs in 20 days\n';
             exportText += '=' .repeat(50) + '\n\n';
             
             const sortedDates = Object.keys(workoutData.daily).sort((a, b) => new Date(b) - new Date(a));
+            const allDatesWithData = [...new Set([...sortedDates, ...Object.keys(workoutData.weights)])].sort((a, b) => new Date(b) - new Date(a));
             
-            sortedDates.forEach(date => {
+            allDatesWithData.forEach(date => {
                 const dayData = workoutData.daily[date];
-                const totalSets = dayData[20] + dayData[30] + dayData[40] + dayData[50];
-                const totalReps = (dayData[20] * 20) + (dayData[30] * 30) + (dayData[40] * 40) + (dayData[50] * 50);
+                const weight = workoutData.weights[date];
+                const totalSets = dayData ? (dayData[20] + dayData[30] + dayData[40] + dayData[50]) : 0;
+                const totalReps = dayData ? ((dayData[20] * 20) + (dayData[30] * 30) + (dayData[40] * 40) + (dayData[50] * 50)) : 0;
                 
-                if (totalSets > 0) {
+                if (totalSets > 0 || weight) {
                     const dateObj = new Date(date);
                     const formattedDate = dateObj.toLocaleDateString('en-US', { 
                         weekday: 'long', 
@@ -431,11 +715,17 @@
                     });
                     
                     exportText += `${formattedDate}\n`;
-                    exportText += `20 reps: ${dayData[20]} sets\n`;
-                    exportText += `30 reps: ${dayData[30]} sets\n`;
-                    exportText += `40 reps: ${dayData[40]} sets\n`;
-                    exportText += `50 reps: ${dayData[50]} sets\n`;
-                    exportText += `Total: ${totalSets} sets, ${totalReps} reps\n\n`;
+                    if (weight) {
+                        exportText += `Weight: ${weight} lbs\n`;
+                    }
+                    if (dayData) {
+                        exportText += `20 reps: ${dayData[20]} sets\n`;
+                        exportText += `30 reps: ${dayData[30]} sets\n`;
+                        exportText += `40 reps: ${dayData[40]} sets\n`;
+                        exportText += `50 reps: ${dayData[50]} sets\n`;
+                        exportText += `Total: ${totalSets} sets, ${totalReps} reps\n`;
+                    }
+                    exportText += '\n';
                 }
             });
             
@@ -444,7 +734,7 @@
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `fitness-tally-export-${new Date().toISOString().split('T')[0]}.txt`;
+            a.download = `fitness-challenge-export-${new Date().toISOString().split('T')[0]}.txt`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
