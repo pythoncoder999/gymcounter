@@ -46,6 +46,24 @@
             font-size: 1.1rem;
         }
 
+        .security-status {
+            background: linear-gradient(145deg, #4CAF50, #45a049);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            margin: 0 auto 20px auto;
+            width: fit-content;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.9rem;
+        }
+
+        .security-status.warning {
+            background: linear-gradient(145deg, #FF9800, #F57C00);
+        }
+
         .tally-section {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -131,6 +149,28 @@
         .control-btn:hover {
             transform: translateY(-2px);
             box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .import-btn {
+            background: linear-gradient(145deg, #9C27B0, #7B1FA2);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 25px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .import-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .file-input {
+            display: none;
         }
 
         .summary {
@@ -311,6 +351,37 @@
             padding: 20px;
         }
 
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 25px;
+            border-radius: 10px;
+            color: white;
+            font-weight: 600;
+            z-index: 1000;
+            transform: translateX(100%);
+            transition: transform 0.3s ease;
+            max-width: 300px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .notification.show {
+            transform: translateX(0);
+        }
+
+        .notification.success {
+            background: linear-gradient(145deg, #4CAF50, #45a049);
+        }
+
+        .notification.error {
+            background: linear-gradient(145deg, #f44336, #d32f2f);
+        }
+
+        .notification.warning {
+            background: linear-gradient(145deg, #FF9800, #F57C00);
+        }
+
         @media (max-width: 600px) {
             .container {
                 padding: 20px;
@@ -328,6 +399,17 @@
                 flex-direction: column;
                 align-items: center;
             }
+
+            .notification {
+                right: 10px;
+                left: 10px;
+                max-width: none;
+                transform: translateY(-100%);
+            }
+
+            .notification.show {
+                transform: translateY(0);
+            }
         }
     </style>
 </head>
@@ -336,6 +418,9 @@
         <div class="header">
             <h1>💪 Fitness Tally Tracker</h1>
             <p>Track your gym sets with single-click tallying</p>
+            <div class="security-status" id="security-status">
+                🔒 Secure Session Active
+            </div>
         </div>
 
         <div class="tally-section">
@@ -391,6 +476,8 @@
         </div>
 
         <div class="controls">
+            <input type="file" id="import-file" class="file-input" accept=".txt,.json" onchange="importData(event)">
+            <button class="import-btn" onclick="document.getElementById('import-file').click()">📁 Import Data</button>
             <button class="control-btn" onclick="resetToday()">Reset Today</button>
             <button class="control-btn" onclick="clearAllData()">Clear All Data</button>
             <button class="control-btn" onclick="exportData()">Export Data</button>
@@ -404,6 +491,9 @@
         </div>
     </div>
 
+    <!-- Notification container -->
+    <div id="notification" class="notification"></div>
+
     <script>
         // Data storage object
         let workoutData = {
@@ -411,7 +501,17 @@
             current: { 20: 0, 30: 0, 40: 0, 50: 0 },
             weights: {},
             challengeStart: new Date().toISOString().split('T')[0],
-            targetWeight: 135
+            targetWeight: 135,
+            appVersion: '1.2.0',
+            lastModified: new Date().toISOString()
+        };
+
+        // Security and validation
+        let securityStatus = {
+            sessionValid: true,
+            lastActivity: Date.now(),
+            importAttempts: 0,
+            maxImportAttempts: 3
         };
 
         // Motivational quotes array
@@ -433,6 +533,261 @@
             "135lbs isn't just a destination, it's proof of your dedication! 🏅"
         ];
 
+        // Security functions
+        function updateActivity() {
+            securityStatus.lastActivity = Date.now();
+            updateSecurityStatus();
+        }
+
+        function updateSecurityStatus() {
+            const statusElement = document.getElementById('security-status');
+            const timeSinceActivity = Date.now() - securityStatus.lastActivity;
+            
+            if (timeSinceActivity > 1800000) { // 30 minutes
+                securityStatus.sessionValid = false;
+                statusElement.textContent = '⚠️ Session Timeout Warning';
+                statusElement.className = 'security-status warning';
+            } else {
+                securityStatus.sessionValid = true;
+                statusElement.textContent = '🔒 Secure Session Active';
+                statusElement.className = 'security-status';
+            }
+        }
+
+        // Notification system
+        function showNotification(message, type = 'success') {
+            const notification = document.getElementById('notification');
+            notification.textContent = message;
+            notification.className = `notification ${type}`;
+            notification.classList.add('show');
+            
+            setTimeout(() => {
+                notification.classList.remove('show');
+            }, 4000);
+        }
+
+        // Data validation
+        function validateImportData(data) {
+            try {
+                // Check if it's a valid object
+                if (typeof data !== 'object' || data === null) {
+                    return { valid: false, error: 'Invalid data format' };
+                }
+
+                // Check for required properties
+                if (!data.hasOwnProperty('daily') || !data.hasOwnProperty('weights')) {
+                    return { valid: false, error: 'Missing required data structure' };
+                }
+
+                // Validate daily data structure
+                if (typeof data.daily !== 'object') {
+                    return { valid: false, error: 'Invalid daily data format' };
+                }
+
+                // Check for suspicious patterns
+                const totalEntries = Object.keys(data.daily).length + Object.keys(data.weights || {}).length;
+                if (totalEntries > 1000) {
+                    return { valid: false, error: 'Data size exceeds security limits' };
+                }
+
+                // Validate date formats
+                for (const date of Object.keys(data.daily)) {
+                    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+                        return { valid: false, error: 'Invalid date format detected' };
+                    }
+                }
+
+                // Validate rep counts
+                for (const [date, dayData] of Object.entries(data.daily)) {
+                    if (typeof dayData !== 'object') continue;
+                    for (const reps of [20, 30, 40, 50]) {
+                        if (dayData[reps] && (dayData[reps] < 0 || dayData[reps] > 1000)) {
+                            return { valid: false, error: 'Invalid rep count detected' };
+                        }
+                    }
+                }
+
+                return { valid: true };
+            } catch (error) {
+                return { valid: false, error: 'Data parsing failed' };
+            }
+        }
+
+        // Import data function
+        async function importData(event) {
+            updateActivity();
+            
+            if (!securityStatus.sessionValid) {
+                showNotification('Session expired. Please refresh the page.', 'error');
+                return;
+            }
+
+            if (securityStatus.importAttempts >= securityStatus.maxImportAttempts) {
+                showNotification('Import limit exceeded for security. Refresh page to reset.', 'error');
+                return;
+            }
+
+            const file = event.target.files[0];
+            if (!file) return;
+
+            // File size check (5MB limit)
+            if (file.size > 5 * 1024 * 1024) {
+                showNotification('File too large. Maximum size is 5MB.', 'error');
+                securityStatus.importAttempts++;
+                return;
+            }
+
+            // File type check
+            if (!file.name.match(/\.(txt|json)$/i)) {
+                showNotification('Invalid file type. Only .txt and .json files are allowed.', 'error');
+                securityStatus.importAttempts++;
+                return;
+            }
+
+            try {
+                const text = await file.text();
+                let importedData;
+
+                // Try to parse as JSON first
+                if (file.name.endsWith('.json')) {
+                    try {
+                        importedData = JSON.parse(text);
+                    } catch {
+                        showNotification('Invalid JSON format.', 'error');
+                        securityStatus.importAttempts++;
+                        return;
+                    }
+                } else {
+                    // Try to parse exported text format
+                    try {
+                        importedData = parseExportedText(text);
+                    } catch {
+                        // If that fails, try JSON parsing anyway
+                        try {
+                            importedData = JSON.parse(text);
+                        } catch {
+                            showNotification('Unable to parse file format.', 'error');
+                            securityStatus.importAttempts++;
+                            return;
+                        }
+                    }
+                }
+
+                // Validate the imported data
+                const validation = validateImportData(importedData);
+                if (!validation.valid) {
+                    showNotification(`Import failed: ${validation.error}`, 'error');
+                    securityStatus.importAttempts++;
+                    return;
+                }
+
+                // Confirm import
+                const confirmMessage = `Import ${Object.keys(importedData.daily || {}).length} workout days and ${Object.keys(importedData.weights || {}).length} weight entries?\n\nThis will merge with your existing data.`;
+                
+                if (confirm(confirmMessage)) {
+                    mergeImportedData(importedData);
+                    showNotification('Data imported successfully!', 'success');
+                    updateDisplay();
+                    updateHistory();
+                    updateWeightDisplay();
+                    updateProgressBar();
+                }
+
+            } catch (error) {
+                showNotification('Import failed. Please check your file format.', 'error');
+                securityStatus.importAttempts++;
+            }
+
+            // Reset file input
+            event.target.value = '';
+        }
+
+        // Parse exported text format
+        function parseExportedText(text) {
+            const lines = text.split('\n');
+            const data = { daily: {}, weights: {} };
+            let currentDate = null;
+            let currentDayData = null;
+
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed || trimmed.includes('=') || trimmed.includes('Fitness Tally Tracker')) continue;
+
+                // Check if it's a date line
+                if (trimmed.match(/^\w+,\s+\w+\s+\d+,\s+\d{4}$/)) {
+                    if (currentDate && currentDayData) {
+                        data.daily[currentDate] = currentDayData;
+                    }
+                    
+                    const dateObj = new Date(trimmed);
+                    currentDate = dateObj.toISOString().split('T')[0];
+                    currentDayData = { 20: 0, 30: 0, 40: 0, 50: 0, entries: [] };
+                    continue;
+                }
+
+                // Parse weight
+                if (trimmed.startsWith('Weight:')) {
+                    const weight = parseFloat(trimmed.split(':')[1].replace('lbs', '').trim());
+                    if (currentDate && !isNaN(weight)) {
+                        data.weights[currentDate] = weight;
+                    }
+                    continue;
+                }
+
+                // Parse rep counts
+                const repMatch = trimmed.match(/^(\d+) reps:\s*(\d+) sets$/);
+                if (repMatch && currentDayData) {
+                    const reps = parseInt(repMatch[1]);
+                    const sets = parseInt(repMatch[2]);
+                    if ([20, 30, 40, 50].includes(reps)) {
+                        currentDayData[reps] = sets;
+                    }
+                }
+            }
+
+            // Don't forget the last date
+            if (currentDate && currentDayData) {
+                data.daily[currentDate] = currentDayData;
+            }
+
+            return data;
+        }
+
+        // Merge imported data with existing data
+        function mergeImportedData(importedData) {
+            // Merge daily workout data
+            if (importedData.daily) {
+                for (const [date, dayData] of Object.entries(importedData.daily)) {
+                    if (!workoutData.daily[date]) {
+                        workoutData.daily[date] = { 20: 0, 30: 0, 40: 0, 50: 0, entries: [] };
+                    }
+                    
+                    // Merge rep counts
+                    for (const reps of [20, 30, 40, 50]) {
+                        if (dayData[reps]) {
+                            workoutData.daily[date][reps] += dayData[reps];
+                        }
+                    }
+                    
+                    // Merge entries if available
+                    if (dayData.entries && Array.isArray(dayData.entries)) {
+                        workoutData.daily[date].entries = workoutData.daily[date].entries || [];
+                        workoutData.daily[date].entries.push(...dayData.entries);
+                    }
+                }
+            }
+
+            // Merge weight data
+            if (importedData.weights) {
+                for (const [date, weight] of Object.entries(importedData.weights)) {
+                    workoutData.weights[date] = weight; // Overwrite existing weights for the same date
+                }
+            }
+
+            // Update metadata
+            workoutData.lastModified = new Date().toISOString();
+        }
+
         // Calculate days remaining in challenge
         function calculateDaysRemaining() {
             const startDate = new Date(workoutData.challengeStart);
@@ -445,21 +800,24 @@
 
         // Log weight for today
         function logWeight() {
+            updateActivity();
             const weightInput = document.getElementById('weight-input');
             const weight = parseFloat(weightInput.value);
             
             if (!weight || weight <= 0) {
-                alert('Please enter a valid weight!');
+                showNotification('Please enter a valid weight!', 'warning');
                 return;
             }
             
             const today = new Date().toISOString().split('T')[0];
             workoutData.weights[today] = weight;
+            workoutData.lastModified = new Date().toISOString();
             weightInput.value = '';
             
             updateWeightDisplay();
             updateProgressBar();
             updateMotivation();
+            showNotification(`Weight logged: ${weight} lbs`, 'success');
         }
 
         // Update weight display
@@ -475,296 +833,4 @@
         }
 
         // Update progress bar based on weight progress
-        function updateProgressBar() {
-            const today = new Date().toISOString().split('T')[0];
-            const currentWeight = workoutData.weights[today];
-            const progressFill = document.getElementById('progress-fill');
-            const progressText = document.getElementById('progress-text');
-            
-            if (currentWeight) {
-                // Find starting weight (first logged weight)
-                const sortedDates = Object.keys(workoutData.weights).sort();
-                const startWeight = sortedDates.length > 0 ? workoutData.weights[sortedDates[0]] : currentWeight;
-                
-                let progress = 0;
-                let progressMessage = '';
-                
-                if (startWeight > workoutData.targetWeight) {
-                    // Weight loss goal
-                    const totalToLose = startWeight - workoutData.targetWeight;
-                    const lostSoFar = startWeight - currentWeight;
-                    progress = Math.max(0, Math.min(100, (lostSoFar / totalToLose) * 100));
-                    progressMessage = `${lostSoFar.toFixed(1)} lbs lost of ${totalToLose.toFixed(1)} lbs goal`;
-                } else {
-                    // Weight gain goal
-                    const totalToGain = workoutData.targetWeight - startWeight;
-                    const gainedSoFar = currentWeight - startWeight;
-                    progress = Math.max(0, Math.min(100, (gainedSoFar / totalToGain) * 100));
-                    progressMessage = `${gainedSoFar.toFixed(1)} lbs gained of ${totalToGain.toFixed(1)} lbs goal`;
-                }
-                
-                progressFill.style.width = `${progress}%`;
-                progressText.textContent = progressMessage;
-                
-                // Check if goal reached
-                if (currentWeight === workoutData.targetWeight) {
-                    progressText.textContent = '🎉 GOAL REACHED! Congratulations! 🎉';
-                    progressFill.style.background = 'linear-gradient(90deg, #FFD700, #FFA500)';
-                }
-            } else {
-                progressFill.style.width = '0%';
-                progressText.textContent = 'Log your weight to see progress!';
-            }
-        }
-
-        // Update countdown and motivation
-        function updateMotivation() {
-            const daysLeft = calculateDaysRemaining();
-            const countdownElement = document.getElementById('countdown');
-            const motivationElement = document.getElementById('motivation-quote');
-            
-            countdownElement.textContent = daysLeft;
-            
-            // Get random motivational quote
-            const randomQuote = motivationalQuotes[Math.floor(Math.random() * motivationalQuotes.length)];
-            motivationElement.textContent = randomQuote;
-            
-            // Special messages based on days left
-            if (daysLeft === 0) {
-                countdownElement.textContent = '🎯';
-                motivationElement.textContent = '🏆 CHALLENGE DAY IS HERE! Show what you\'re made of! 🏆';
-            } else if (daysLeft <= 3) {
-                motivationElement.textContent = '🔥 FINAL PUSH! You\'re so close to victory! 🔥';
-            } else if (daysLeft <= 7) {
-                motivationElement.textContent = '⚡ ONE WEEK LEFT! Time to give it everything you\'ve got! ⚡';
-            }
-        }
-
-        // Load data from memory on page load
-        function loadData() {
-            // Initialize with empty data since we can't use localStorage
-            updateDisplay();
-            updateHistory();
-            updateWeightDisplay();
-            updateProgressBar();
-            updateMotivation();
-        }
-
-        // Add a tally for specific rep count
-        function addTally(reps) {
-            const today = new Date().toISOString().split('T')[0];
-            const now = new Date();
-            
-            // Initialize today's data if it doesn't exist
-            if (!workoutData.daily[today]) {
-                workoutData.daily[today] = { 20: 0, 30: 0, 40: 0, 50: 0, entries: [] };
-            }
-            
-            // Increment counters
-            workoutData.current[reps]++;
-            workoutData.daily[today][reps]++;
-            
-            // Add entry with timestamp
-            workoutData.daily[today].entries.push({
-                reps: reps,
-                timestamp: now.toLocaleTimeString(),
-                datetime: now
-            });
-            
-            // Animate the button
-            animateButton(document.querySelector(`#count-${reps}`).parentElement.querySelector('.tally-btn'));
-            
-            updateDisplay();
-            updateHistory();
-        }
-
-        // Animate button on click
-        function animateButton(button) {
-            button.style.transform = 'scale(0.95)';
-            setTimeout(() => {
-                button.style.transform = 'scale(1)';
-            }, 100);
-        }
-
-        // Update the display counters
-        function updateDisplay() {
-            const today = new Date().toISOString().split('T')[0];
-            let totalReps = 0;
-            
-            [20, 30, 40, 50].forEach(reps => {
-                const count = workoutData.daily[today] ? workoutData.daily[today][reps] : 0;
-                document.getElementById(`count-${reps}`).textContent = count;
-                totalReps += count * reps;
-            });
-            
-            document.getElementById('total-reps').textContent = totalReps.toLocaleString();
-        }
-
-        // Update history display
-        function updateHistory() {
-            const historyList = document.getElementById('history-list');
-            const today = new Date();
-            const thirtyDaysAgo = new Date(today.getTime() - (30 * 24 * 60 * 60 * 1000));
-            
-            let historyHTML = '';
-            let hasData = false;
-            
-            // Get all dates within the last 30 days that have data
-            const sortedDates = Object.keys(workoutData.daily)
-                .filter(date => {
-                    const dateObj = new Date(date);
-                    return dateObj >= thirtyDaysAgo && dateObj <= today;
-                })
-                .sort((a, b) => new Date(b) - new Date(a)); // Most recent first
-            
-            sortedDates.forEach(date => {
-                const dayData = workoutData.daily[date];
-                const totalSets = dayData[20] + dayData[30] + dayData[40] + dayData[50];
-                const totalReps = (dayData[20] * 20) + (dayData[30] * 30) + (dayData[40] * 40) + (dayData[50] * 50);
-                const weight = workoutData.weights[date];
-                
-                if (totalSets > 0 || weight) {
-                    hasData = true;
-                    const dateObj = new Date(date);
-                    const formattedDate = dateObj.toLocaleDateString('en-US', { 
-                        weekday: 'short', 
-                        year: 'numeric', 
-                        month: 'short', 
-                        day: 'numeric' 
-                    });
-                    
-                    let weightInfo = weight ? ` | Weight: ${weight} lbs` : '';
-                    
-                    historyHTML += `
-                        <div class="history-entry">
-                            <div class="history-date">${formattedDate}</div>
-                            <div class="history-details">
-                                Sets: 20×${dayData ? dayData[20] : 0}, 30×${dayData ? dayData[30] : 0}, 40×${dayData ? dayData[40] : 0}, 50×${dayData ? dayData[50] : 0} | 
-                                Total: ${totalSets} sets, ${totalReps.toLocaleString()} reps${weightInfo}
-                            </div>
-                        </div>
-                    `;
-                }
-            });
-            
-            if (!hasData) {
-                historyHTML = '<div class="no-data">No workout data yet. Start tracking your sets!</div>';
-            }
-            
-            historyList.innerHTML = historyHTML;
-        }
-
-        // Reset today's data
-        function resetToday() {
-            if (confirm('Are you sure you want to reset today\'s data?')) {
-                const today = new Date().toISOString().split('T')[0];
-                workoutData.current = { 20: 0, 30: 0, 40: 0, 50: 0 };
-                if (workoutData.daily[today]) {
-                    delete workoutData.daily[today];
-                }
-                if (workoutData.weights[today]) {
-                    delete workoutData.weights[today];
-                }
-                updateDisplay();
-                updateHistory();
-                updateWeightDisplay();
-                updateProgressBar();
-            }
-        }
-
-        // Clear all data
-        function clearAllData() {
-            if (confirm('Are you sure you want to clear ALL workout data? This cannot be undone.')) {
-                workoutData = {
-                    daily: {},
-                    current: { 20: 0, 30: 0, 40: 0, 50: 0 },
-                    weights: {},
-                    challengeStart: new Date().toISOString().split('T')[0],
-                    targetWeight: 135
-                };
-                updateDisplay();
-                updateHistory();
-                updateWeightDisplay();
-                updateProgressBar();
-                updateMotivation();
-            }
-        }
-
-        // Export data as text
-        function exportData() {
-            let exportText = 'Fitness Tally Tracker - Workout Data Export\n';
-            exportText += 'Challenge Goal: Reach 135lbs in 20 days\n';
-            exportText += '=' .repeat(50) + '\n\n';
-            
-            const sortedDates = Object.keys(workoutData.daily).sort((a, b) => new Date(b) - new Date(a));
-            const allDatesWithData = [...new Set([...sortedDates, ...Object.keys(workoutData.weights)])].sort((a, b) => new Date(b) - new Date(a));
-            
-            allDatesWithData.forEach(date => {
-                const dayData = workoutData.daily[date];
-                const weight = workoutData.weights[date];
-                const totalSets = dayData ? (dayData[20] + dayData[30] + dayData[40] + dayData[50]) : 0;
-                const totalReps = dayData ? ((dayData[20] * 20) + (dayData[30] * 30) + (dayData[40] * 40) + (dayData[50] * 50)) : 0;
-                
-                if (totalSets > 0 || weight) {
-                    const dateObj = new Date(date);
-                    const formattedDate = dateObj.toLocaleDateString('en-US', { 
-                        weekday: 'long', 
-                        year: 'numeric', 
-                        month: 'long', 
-                        day: 'numeric' 
-                    });
-                    
-                    exportText += `${formattedDate}\n`;
-                    if (weight) {
-                        exportText += `Weight: ${weight} lbs\n`;
-                    }
-                    if (dayData) {
-                        exportText += `20 reps: ${dayData[20]} sets\n`;
-                        exportText += `30 reps: ${dayData[30]} sets\n`;
-                        exportText += `40 reps: ${dayData[40]} sets\n`;
-                        exportText += `50 reps: ${dayData[50]} sets\n`;
-                        exportText += `Total: ${totalSets} sets, ${totalReps} reps\n`;
-                    }
-                    exportText += '\n';
-                }
-            });
-            
-            // Create and download the file
-            const blob = new Blob([exportText], { type: 'text/plain' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `fitness-challenge-export-${new Date().toISOString().split('T')[0]}.txt`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        }
-
-        // Cleanup old data (older than 30 days)
-        function cleanupOldData() {
-            const thirtyDaysAgo = new Date(Date.now() - (30 * 24 * 60 * 60 * 1000));
-            const datesToRemove = [];
-            
-            Object.keys(workoutData.daily).forEach(date => {
-                if (new Date(date) < thirtyDaysAgo) {
-                    datesToRemove.push(date);
-                }
-            });
-            
-            datesToRemove.forEach(date => {
-                delete workoutData.daily[date];
-            });
-        }
-
-        // Initialize the app
-        document.addEventListener('DOMContentLoaded', function() {
-            loadData();
-            cleanupOldData();
-            
-            // Clean up old data daily
-            setInterval(cleanupOldData, 24 * 60 * 60 * 1000);
-        });
-    </script>
-</body>
-</html>
+        function
