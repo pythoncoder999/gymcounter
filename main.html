@@ -276,6 +276,61 @@
             margin-bottom: 15px;
         }
 
+        .weight-entries {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 15px;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+
+        .weight-entry {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            margin: 5px 0;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            font-size: 0.9rem;
+        }
+
+        .weight-entry-time {
+            opacity: 0.8;
+            font-size: 0.8rem;
+        }
+
+        .weight-entry-value {
+            font-weight: bold;
+        }
+
+        .weight-stats {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 15px;
+            gap: 15px;
+        }
+
+        .weight-stat {
+            text-align: center;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            flex: 1;
+        }
+
+        .weight-stat-label {
+            font-size: 0.8rem;
+            opacity: 0.8;
+            margin-bottom: 5px;
+        }
+
+        .weight-stat-value {
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+
         .progress-bar {
             background: rgba(255, 255, 255, 0.3);
             border-radius: 25px;
@@ -344,6 +399,12 @@
             font-size: 0.9rem;
         }
 
+        .history-weight {
+            color: #9C27B0;
+            font-weight: 600;
+            margin-top: 5px;
+        }
+
         .no-data {
             text-align: center;
             color: #999;
@@ -410,6 +471,10 @@
             .notification.show {
                 transform: translateY(0);
             }
+
+            .weight-stats {
+                flex-direction: column;
+            }
         }
     </style>
 </head>
@@ -457,13 +522,33 @@
         </div>
 
         <div class="weight-tracker">
-            <h3 style="text-align: center; margin-bottom: 20px;">⚖️ Weight Tracker</h3>
+            <h3 style="text-align: center; margin-bottom: 20px;">⚖️ Smart Weight Tracker</h3>
             <div class="weight-input-section">
                 <input type="number" id="weight-input" class="weight-input" placeholder="Enter weight" step="0.1" min="0" max="500">
                 <span style="font-size: 1.2rem;">lbs</span>
                 <button class="weight-btn" onclick="logWeight()">Log Weight</button>
             </div>
             <div class="current-weight" id="current-weight">No weight logged today</div>
+            
+            <div class="weight-stats">
+                <div class="weight-stat">
+                    <div class="weight-stat-label">Today's Entries</div>
+                    <div class="weight-stat-value" id="entries-count">0</div>
+                </div>
+                <div class="weight-stat">
+                    <div class="weight-stat-label">Change Today</div>
+                    <div class="weight-stat-value" id="weight-change">--</div>
+                </div>
+                <div class="weight-stat">
+                    <div class="weight-stat-label">Weekly Avg</div>
+                    <div class="weight-stat-value" id="weekly-avg">--</div>
+                </div>
+            </div>
+
+            <div class="weight-entries" id="weight-entries" style="display: none;">
+                <div style="text-align: center; font-weight: bold; margin-bottom: 10px; font-size: 0.9rem;">Today's Weight Log</div>
+                <div id="weight-entries-list"></div>
+            </div>
         </div>
 
         <div class="motivation-quote" id="motivation-quote">
@@ -495,14 +580,14 @@
     <div id="notification" class="notification"></div>
 
     <script>
-        // Data storage object
+        // Enhanced data storage with detailed weight tracking
         let workoutData = {
             daily: {},
             current: { 20: 0, 30: 0, 40: 0, 50: 0 },
-            weights: {},
+            weights: {}, // Now stores arrays of weight entries per day
             challengeStart: new Date().toISOString().split('T')[0],
             targetWeight: 135,
-            appVersion: '1.2.0',
+            appVersion: '1.3.0',
             lastModified: new Date().toISOString()
         };
 
@@ -533,304 +618,194 @@
             "135lbs isn't just a destination, it's proof of your dedication! 🏅"
         ];
 
-        // Security functions
-        function updateActivity() {
-            securityStatus.lastActivity = Date.now();
+        // Initialize the app
+        document.addEventListener('DOMContentLoaded', function() {
+            loadData();
+            updateDisplay();
+            updateHistory();
+            updateWeightDisplay();
+            updateProgressBar();
+            updateMotivation();
             updateSecurityStatus();
-        }
+            setInterval(updateSecurityStatus, 60000);
+        });
 
-        function updateSecurityStatus() {
-            const statusElement = document.getElementById('security-status');
-            const timeSinceActivity = Date.now() - securityStatus.lastActivity;
-            
-            if (timeSinceActivity > 1800000) { // 30 minutes
-                securityStatus.sessionValid = false;
-                statusElement.textContent = '⚠️ Session Timeout Warning';
-                statusElement.className = 'security-status warning';
-            } else {
-                securityStatus.sessionValid = true;
-                statusElement.textContent = '🔒 Secure Session Active';
-                statusElement.className = 'security-status';
+        // Load data from memory (in a real app, this would be from storage)
+        function loadData() {
+            // Initialize sample data if needed
+            const today = new Date().toISOString().split('T')[0];
+            if (!workoutData.daily[today]) {
+                workoutData.daily[today] = { 20: 0, 30: 0, 40: 0, 50: 0, entries: [] };
+            }
+            if (!workoutData.weights[today]) {
+                workoutData.weights[today] = [];
             }
         }
 
-        // Notification system
-        function showNotification(message, type = 'success') {
-            const notification = document.getElementById('notification');
-            notification.textContent = message;
-            notification.className = `notification ${type}`;
-            notification.classList.add('show');
-            
-            setTimeout(() => {
-                notification.classList.remove('show');
-            }, 4000);
-        }
-
-        // Data validation
-        function validateImportData(data) {
-            try {
-                // Check if it's a valid object
-                if (typeof data !== 'object' || data === null) {
-                    return { valid: false, error: 'Invalid data format' };
-                }
-
-                // Check for required properties
-                if (!data.hasOwnProperty('daily') || !data.hasOwnProperty('weights')) {
-                    return { valid: false, error: 'Missing required data structure' };
-                }
-
-                // Validate daily data structure
-                if (typeof data.daily !== 'object') {
-                    return { valid: false, error: 'Invalid daily data format' };
-                }
-
-                // Check for suspicious patterns
-                const totalEntries = Object.keys(data.daily).length + Object.keys(data.weights || {}).length;
-                if (totalEntries > 1000) {
-                    return { valid: false, error: 'Data size exceeds security limits' };
-                }
-
-                // Validate date formats
-                for (const date of Object.keys(data.daily)) {
-                    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-                        return { valid: false, error: 'Invalid date format detected' };
-                    }
-                }
-
-                // Validate rep counts
-                for (const [date, dayData] of Object.entries(data.daily)) {
-                    if (typeof dayData !== 'object') continue;
-                    for (const reps of [20, 30, 40, 50]) {
-                        if (dayData[reps] && (dayData[reps] < 0 || dayData[reps] > 1000)) {
-                            return { valid: false, error: 'Invalid rep count detected' };
-                        }
-                    }
-                }
-
-                return { valid: true };
-            } catch (error) {
-                return { valid: false, error: 'Data parsing failed' };
-            }
-        }
-
-        // Import data function
-        async function importData(event) {
-            updateActivity();
-            
-            if (!securityStatus.sessionValid) {
-                showNotification('Session expired. Please refresh the page.', 'error');
-                return;
-            }
-
-            if (securityStatus.importAttempts >= securityStatus.maxImportAttempts) {
-                showNotification('Import limit exceeded for security. Refresh page to reset.', 'error');
-                return;
-            }
-
-            const file = event.target.files[0];
-            if (!file) return;
-
-            // File size check (5MB limit)
-            if (file.size > 5 * 1024 * 1024) {
-                showNotification('File too large. Maximum size is 5MB.', 'error');
-                securityStatus.importAttempts++;
-                return;
-            }
-
-            // File type check
-            if (!file.name.match(/\.(txt|json)$/i)) {
-                showNotification('Invalid file type. Only .txt and .json files are allowed.', 'error');
-                securityStatus.importAttempts++;
-                return;
-            }
-
-            try {
-                const text = await file.text();
-                let importedData;
-
-                // Try to parse as JSON first
-                if (file.name.endsWith('.json')) {
-                    try {
-                        importedData = JSON.parse(text);
-                    } catch {
-                        showNotification('Invalid JSON format.', 'error');
-                        securityStatus.importAttempts++;
-                        return;
-                    }
-                } else {
-                    // Try to parse exported text format
-                    try {
-                        importedData = parseExportedText(text);
-                    } catch {
-                        // If that fails, try JSON parsing anyway
-                        try {
-                            importedData = JSON.parse(text);
-                        } catch {
-                            showNotification('Unable to parse file format.', 'error');
-                            securityStatus.importAttempts++;
-                            return;
-                        }
-                    }
-                }
-
-                // Validate the imported data
-                const validation = validateImportData(importedData);
-                if (!validation.valid) {
-                    showNotification(`Import failed: ${validation.error}`, 'error');
-                    securityStatus.importAttempts++;
-                    return;
-                }
-
-                // Confirm import
-                const confirmMessage = `Import ${Object.keys(importedData.daily || {}).length} workout days and ${Object.keys(importedData.weights || {}).length} weight entries?\n\nThis will merge with your existing data.`;
-                
-                if (confirm(confirmMessage)) {
-                    mergeImportedData(importedData);
-                    showNotification('Data imported successfully!', 'success');
-                    updateDisplay();
-                    updateHistory();
-                    updateWeightDisplay();
-                    updateProgressBar();
-                }
-
-            } catch (error) {
-                showNotification('Import failed. Please check your file format.', 'error');
-                securityStatus.importAttempts++;
-            }
-
-            // Reset file input
-            event.target.value = '';
-        }
-
-        // Parse exported text format
-        function parseExportedText(text) {
-            const lines = text.split('\n');
-            const data = { daily: {}, weights: {} };
-            let currentDate = null;
-            let currentDayData = null;
-
-            for (const line of lines) {
-                const trimmed = line.trim();
-                if (!trimmed || trimmed.includes('=') || trimmed.includes('Fitness Tally Tracker')) continue;
-
-                // Check if it's a date line
-                if (trimmed.match(/^\w+,\s+\w+\s+\d+,\s+\d{4}$/)) {
-                    if (currentDate && currentDayData) {
-                        data.daily[currentDate] = currentDayData;
-                    }
-                    
-                    const dateObj = new Date(trimmed);
-                    currentDate = dateObj.toISOString().split('T')[0];
-                    currentDayData = { 20: 0, 30: 0, 40: 0, 50: 0, entries: [] };
-                    continue;
-                }
-
-                // Parse weight
-                if (trimmed.startsWith('Weight:')) {
-                    const weight = parseFloat(trimmed.split(':')[1].replace('lbs', '').trim());
-                    if (currentDate && !isNaN(weight)) {
-                        data.weights[currentDate] = weight;
-                    }
-                    continue;
-                }
-
-                // Parse rep counts
-                const repMatch = trimmed.match(/^(\d+) reps:\s*(\d+) sets$/);
-                if (repMatch && currentDayData) {
-                    const reps = parseInt(repMatch[1]);
-                    const sets = parseInt(repMatch[2]);
-                    if ([20, 30, 40, 50].includes(reps)) {
-                        currentDayData[reps] = sets;
-                    }
-                }
-            }
-
-            // Don't forget the last date
-            if (currentDate && currentDayData) {
-                data.daily[currentDate] = currentDayData;
-            }
-
-            return data;
-        }
-
-        // Merge imported data with existing data
-        function mergeImportedData(importedData) {
-            // Merge daily workout data
-            if (importedData.daily) {
-                for (const [date, dayData] of Object.entries(importedData.daily)) {
-                    if (!workoutData.daily[date]) {
-                        workoutData.daily[date] = { 20: 0, 30: 0, 40: 0, 50: 0, entries: [] };
-                    }
-                    
-                    // Merge rep counts
-                    for (const reps of [20, 30, 40, 50]) {
-                        if (dayData[reps]) {
-                            workoutData.daily[date][reps] += dayData[reps];
-                        }
-                    }
-                    
-                    // Merge entries if available
-                    if (dayData.entries && Array.isArray(dayData.entries)) {
-                        workoutData.daily[date].entries = workoutData.daily[date].entries || [];
-                        workoutData.daily[date].entries.push(...dayData.entries);
-                    }
-                }
-            }
-
-            // Merge weight data
-            if (importedData.weights) {
-                for (const [date, weight] of Object.entries(importedData.weights)) {
-                    workoutData.weights[date] = weight; // Overwrite existing weights for the same date
-                }
-            }
-
-            // Update metadata
-            workoutData.lastModified = new Date().toISOString();
-        }
-
-        // Calculate days remaining in challenge
-        function calculateDaysRemaining() {
-            const startDate = new Date(workoutData.challengeStart);
-            const targetDate = new Date(startDate.getTime() + (20 * 24 * 60 * 60 * 1000));
-            const today = new Date();
-            const diffTime = targetDate - today;
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-            return Math.max(0, diffDays);
-        }
-
-        // Log weight for today
+        // Enhanced weight logging with multiple entries per day
         function logWeight() {
             updateActivity();
             const weightInput = document.getElementById('weight-input');
             const weight = parseFloat(weightInput.value);
             
-            if (!weight || weight <= 0) {
-                showNotification('Please enter a valid weight!', 'warning');
+            if (!weight || weight <= 0 || weight > 500) {
+                showNotification('Please enter a valid weight (1-500 lbs)!', 'warning');
                 return;
             }
             
             const today = new Date().toISOString().split('T')[0];
-            workoutData.weights[today] = weight;
+            const now = new Date();
+            const timestamp = now.toISOString();
+            const timeString = now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            
+            // Initialize weights array for today if it doesn't exist
+            if (!workoutData.weights[today]) {
+                workoutData.weights[today] = [];
+            }
+            
+            // Add new weight entry
+            workoutData.weights[today].push({
+                weight: weight,
+                timestamp: timestamp,
+                time: timeString
+            });
+            
             workoutData.lastModified = new Date().toISOString();
             weightInput.value = '';
             
             updateWeightDisplay();
             updateProgressBar();
             updateMotivation();
-            showNotification(`Weight logged: ${weight} lbs`, 'success');
+            
+            const entriesCount = workoutData.weights[today].length;
+            const ordinal = getOrdinal(entriesCount);
+            showNotification(`${ordinal} weight entry: ${weight} lbs at ${timeString}`, 'success');
         }
 
-        // Update weight display
+        // Helper function to get ordinal numbers (1st, 2nd, 3rd, etc.)
+        function getOrdinal(n) {
+            const s = ['th', 'st', 'nd', 'rd'];
+            const v = n % 100;
+            return n + (s[(v - 20) % 10] || s[v] || s[0]);
+        }
+
+        // Enhanced weight display with detailed stats
         function updateWeightDisplay() {
             const today = new Date().toISOString().split('T')[0];
             const currentWeightElement = document.getElementById('current-weight');
+            const entriesCountElement = document.getElementById('entries-count');
+            const weightChangeElement = document.getElementById('weight-change');
+            const weeklyAvgElement = document.getElementById('weekly-avg');
+            const entriesContainer = document.getElementById('weight-entries');
+            const entriesList = document.getElementById('weight-entries-list');
             
-            if (workoutData.weights[today]) {
-                currentWeightElement.textContent = `Today's Weight: ${workoutData.weights[today]} lbs`;
+            const todayEntries = workoutData.weights[today] || [];
+            
+            // Update main display
+            if (todayEntries.length > 0) {
+                const latestWeight = todayEntries[todayEntries.length - 1].weight;
+                const latestTime = todayEntries[todayEntries.length - 1].time;
+                currentWeightElement.textContent = `Current: ${latestWeight} lbs (${latestTime})`;
             } else {
                 currentWeightElement.textContent = 'No weight logged today';
             }
+            
+            // Update entries count
+            entriesCountElement.textContent = todayEntries.length;
+            
+            // Calculate weight change for today
+            if (todayEntries.length >= 2) {
+                const firstWeight = todayEntries[0].weight;
+                const lastWeight = todayEntries[todayEntries.length - 1].weight;
+                const change = (lastWeight - firstWeight).toFixed(1);
+                const changeText = change > 0 ? `+${change}` : change;
+                weightChangeElement.textContent = `${changeText} lbs`;
+                weightChangeElement.style.color = change > 0 ? '#ff6b6b' : change < 0 ? '#4CAF50' : 'white';
+            } else {
+                weightChangeElement.textContent = '--';
+                weightChangeElement.style.color = 'white';
+            }
+            
+            // Calculate weekly average
+            const weeklyAvg = calculateWeeklyAverage();
+            weeklyAvgElement.textContent = weeklyAvg ? `${weeklyAvg} lbs` : '--';
+            
+            // Show/hide entries list
+            if (todayEntries.length > 1) {
+                entriesContainer.style.display = 'block';
+                entriesList.innerHTML = '';
+                
+                // Show all entries for today (most recent first)
+                const sortedEntries = [...todayEntries].reverse();
+                sortedEntries.forEach((entry, index) => {
+                    const entryDiv = document.createElement('div');
+                    entryDiv.className = 'weight-entry';
+                    entryDiv.innerHTML = `
+                        <span class="weight-entry-value">${entry.weight} lbs</span>
+                        <span class="weight-entry-time">${entry.time}</span>
+                    `;
+                    entriesList.appendChild(entryDiv);
+                });
+            } else {
+                entriesContainer.style.display = 'none';
+            }
         }
 
-        // Update progress bar based on weight progress
-        function
+        // Calculate weekly average of latest daily weights
+        function calculateWeeklyAverage() {
+            const today = new Date();
+            const weekAgo = new Date(today.getTime() - (7 * 24 * 60 * 60 * 1000));
+            let totalWeight = 0;
+            let dayCount = 0;
+            
+            for (let d = new Date(weekAgo); d <= today; d.setDate(d.getDate() + 1)) {
+                const dateStr = d.toISOString().split('T')[0];
+                const dayEntries = workoutData.weights[dateStr];
+                
+                if (dayEntries && dayEntries.length > 0) {
+                    // Use the last weight entry of each day
+                    totalWeight += dayEntries[dayEntries.length - 1].weight;
+                    dayCount++;
+                }
+            }
+            
+            return dayCount > 0 ? (totalWeight / dayCount).toFixed(1) : null;
+        }
+
+        // Get the latest weight for progress calculation
+        function getLatestWeight() {
+            // Get all dates with weights, sorted by date (newest first)
+            const datesWithWeights = Object.keys(workoutData.weights)
+                .filter(date => workoutData.weights[date] && workoutData.weights[date].length > 0)
+                .sort()
+                .reverse();
+            
+            if (datesWithWeights.length === 0) return null;
+            
+            // Get the latest weight from the most recent date
+            const latestDate = datesWithWeights[0];
+            const entries = workoutData.weights[latestDate];
+            return entries[entries.length - 1].weight;
+        }
+
+        // Add tally function (enhanced to trigger weight-related updates)
+        function addTally(reps) {
+            updateActivity();
+            const today = new Date().toISOString().split('T')[0];
+            
+            if (!workoutData.daily[today]) {
+                workoutData.daily[today] = { 20: 0, 30: 0, 40: 0, 50: 0, entries: [] };
+            }
+            
+            workoutData.current[reps]++;
+            workoutData.daily[today][reps]++;
+            workoutData.daily[today].entries = workoutData.daily[today].entries || [];
+            workoutData.daily[today].entries.push({
+                reps: reps,
+                timestamp: new Date().toISOString()
+            });
+            
+            workoutData.lastModified = new Date().toISOString();
+            
+            updateDisplay();
+            updateMotivation();
