@@ -107,6 +107,11 @@
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
         }
 
+        .custom-card .weight-input {
+            color: #333;
+            margin-bottom: 15px;
+        }
+
         .controls {
             display: flex;
             justify-content: center;
@@ -126,6 +131,10 @@
             cursor: pointer;
             transition: all 0.3s ease;
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .control-btn.import-btn {
+            background: linear-gradient(145deg, #2196F3, #1976D2);
         }
 
         .control-btn:hover {
@@ -359,6 +368,11 @@
                 <div class="count-display" id="count-50">0</div>
                 <button class="tally-btn" onclick="addTally(50)">+ Add Set</button>
             </div>
+            <div class="tally-card custom-card">
+                <h3>Custom</h3>
+                <input type="number" id="custom-reps-input" class="weight-input" placeholder="# reps" min="1" step="1" style="width:100%;">
+                <button class="tally-btn" onclick="addCustomTally()">+ Add Set</button>
+            </div>
         </div>
 
         <div class="challenge-section">
@@ -394,6 +408,8 @@
             <button class="control-btn" onclick="resetToday()">Reset Today</button>
             <button class="control-btn" onclick="clearAllData()">Clear All Data</button>
             <button class="control-btn" onclick="exportData()">Export Data</button>
+            <button class="control-btn import-btn" onclick="document.getElementById('import-file-input').click()">Import Data</button>
+            <input type="file" id="import-file-input" accept=".txt" style="display:none" onchange="handleImportFile(event)">
         </div>
 
         <div class="history-section">
@@ -406,11 +422,11 @@
 
     <script>
         // Data storage object
+        // workoutData.daily[date] = { counts: { repNumber: setsCount }, entries: [{reps, timestamp}] }
         let workoutData = {
             daily: {},
-            current: { 20: 0, 30: 0, 40: 0, 50: 0 },
             weights: {},
-            challengeStart: new Date().toISOString().split('T')[0],
+            challengeStart: todayISO(),
             targetWeight: 135
         };
 
@@ -433,6 +449,15 @@
             "135lbs isn't just a destination, it's proof of your dedication! 🏅"
         ];
 
+        // ---- Date helpers (local time, avoids UTC-shift bugs from toISOString) ----
+        function pad2(n) { return n < 10 ? '0' + n : '' + n; }
+        function toISODateLocal(d) {
+            return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+        }
+        function todayISO() {
+            return toISODateLocal(new Date());
+        }
+
         // Calculate days remaining in challenge
         function calculateDaysRemaining() {
             const startDate = new Date(workoutData.challengeStart);
@@ -453,7 +478,7 @@
                 return;
             }
             
-            const today = new Date().toISOString().split('T')[0];
+            const today = todayISO();
             workoutData.weights[today] = weight;
             weightInput.value = '';
             
@@ -464,7 +489,7 @@
 
         // Update weight display
         function updateWeightDisplay() {
-            const today = new Date().toISOString().split('T')[0];
+            const today = todayISO();
             const currentWeightElement = document.getElementById('current-weight');
             
             if (workoutData.weights[today]) {
@@ -476,13 +501,12 @@
 
         // Update progress bar based on weight progress
         function updateProgressBar() {
-            const today = new Date().toISOString().split('T')[0];
+            const today = todayISO();
             const currentWeight = workoutData.weights[today];
             const progressFill = document.getElementById('progress-fill');
             const progressText = document.getElementById('progress-text');
             
             if (currentWeight) {
-                // Find starting weight (first logged weight)
                 const sortedDates = Object.keys(workoutData.weights).sort();
                 const startWeight = sortedDates.length > 0 ? workoutData.weights[sortedDates[0]] : currentWeight;
                 
@@ -490,23 +514,20 @@
                 let progressMessage = '';
                 
                 if (startWeight > workoutData.targetWeight) {
-                    // Weight loss goal
                     const totalToLose = startWeight - workoutData.targetWeight;
                     const lostSoFar = startWeight - currentWeight;
-                    progress = Math.max(0, Math.min(100, (lostSoFar / totalToLose) * 100));
+                    progress = totalToLose > 0 ? Math.max(0, Math.min(100, (lostSoFar / totalToLose) * 100)) : 100;
                     progressMessage = `${lostSoFar.toFixed(1)} lbs lost of ${totalToLose.toFixed(1)} lbs goal`;
                 } else {
-                    // Weight gain goal
                     const totalToGain = workoutData.targetWeight - startWeight;
                     const gainedSoFar = currentWeight - startWeight;
-                    progress = Math.max(0, Math.min(100, (gainedSoFar / totalToGain) * 100));
+                    progress = totalToGain > 0 ? Math.max(0, Math.min(100, (gainedSoFar / totalToGain) * 100)) : 100;
                     progressMessage = `${gainedSoFar.toFixed(1)} lbs gained of ${totalToGain.toFixed(1)} lbs goal`;
                 }
                 
                 progressFill.style.width = `${progress}%`;
                 progressText.textContent = progressMessage;
                 
-                // Check if goal reached
                 if (currentWeight === workoutData.targetWeight) {
                     progressText.textContent = '🎉 GOAL REACHED! Congratulations! 🎉';
                     progressFill.style.background = 'linear-gradient(90deg, #FFD700, #FFA500)';
@@ -525,11 +546,9 @@
             
             countdownElement.textContent = daysLeft;
             
-            // Get random motivational quote
             const randomQuote = motivationalQuotes[Math.floor(Math.random() * motivationalQuotes.length)];
             motivationElement.textContent = randomQuote;
             
-            // Special messages based on days left
             if (daysLeft === 0) {
                 countdownElement.textContent = '🎯';
                 motivationElement.textContent = '🏆 CHALLENGE DAY IS HERE! Show what you\'re made of! 🏆';
@@ -540,9 +559,8 @@
             }
         }
 
-        // Load data from memory on page load
+        // Load data on page load (in-memory only, no persistence between sessions)
         function loadData() {
-            // Initialize with empty data since we can't use localStorage
             updateDisplay();
             updateHistory();
             updateWeightDisplay();
@@ -550,36 +568,55 @@
             updateMotivation();
         }
 
-        // Add a tally for specific rep count
+        // Add a tally for any rep count (default cards or custom)
         function addTally(reps) {
-            const today = new Date().toISOString().split('T')[0];
-            const now = new Date();
-            
-            // Initialize today's data if it doesn't exist
-            if (!workoutData.daily[today]) {
-                workoutData.daily[today] = { 20: 0, 30: 0, 40: 0, 50: 0, entries: [] };
+            reps = parseInt(reps, 10);
+            if (!reps || reps <= 0) {
+                alert('Please enter a valid number of reps!');
+                return;
             }
-            
-            // Increment counters
-            workoutData.current[reps]++;
-            workoutData.daily[today][reps]++;
-            
-            // Add entry with timestamp
-            workoutData.daily[today].entries.push({
+
+            const today = todayISO();
+            const now = new Date();
+
+            if (!workoutData.daily[today]) {
+                workoutData.daily[today] = { counts: {}, entries: [] };
+            }
+
+            const dayData = workoutData.daily[today];
+            dayData.counts[reps] = (dayData.counts[reps] || 0) + 1;
+            dayData.entries.push({
                 reps: reps,
-                timestamp: now.toLocaleTimeString(),
-                datetime: now
+                timestamp: now.toLocaleTimeString()
             });
-            
-            // Animate the button
-            animateButton(document.querySelector(`#count-${reps}`).parentElement.querySelector('.tally-btn'));
-            
+
+            // Animate the corresponding button if it's one of the default cards
+            if ([20, 30, 40, 50].includes(reps)) {
+                const countEl = document.getElementById(`count-${reps}`);
+                if (countEl) {
+                    animateButton(countEl.parentElement.querySelector('.tally-btn'));
+                }
+            }
+
             updateDisplay();
             updateHistory();
         }
 
+        // Handle the custom rep card
+        function addCustomTally() {
+            const input = document.getElementById('custom-reps-input');
+            const reps = parseInt(input.value, 10);
+            if (!reps || reps <= 0) {
+                alert('Please enter a valid number of reps!');
+                return;
+            }
+            addTally(reps);
+            animateButton(input.parentElement.querySelector('.tally-btn'));
+        }
+
         // Animate button on click
         function animateButton(button) {
+            if (!button) return;
             button.style.transform = 'scale(0.95)';
             setTimeout(() => {
                 button.style.transform = 'scale(1)';
@@ -588,15 +625,19 @@
 
         // Update the display counters
         function updateDisplay() {
-            const today = new Date().toISOString().split('T')[0];
-            let totalReps = 0;
-            
+            const today = todayISO();
+            const dayData = workoutData.daily[today];
+            const counts = dayData ? dayData.counts : {};
+
             [20, 30, 40, 50].forEach(reps => {
-                const count = workoutData.daily[today] ? workoutData.daily[today][reps] : 0;
-                document.getElementById(`count-${reps}`).textContent = count;
-                totalReps += count * reps;
+                document.getElementById(`count-${reps}`).textContent = counts[reps] || 0;
             });
-            
+
+            let totalReps = 0;
+            Object.keys(counts).forEach(reps => {
+                totalReps += Number(reps) * counts[reps];
+            });
+
             document.getElementById('total-reps').textContent = totalReps.toLocaleString();
         }
 
@@ -609,18 +650,20 @@
             let historyHTML = '';
             let hasData = false;
             
-            // Get all dates within the last 30 days that have data
-            const sortedDates = Object.keys(workoutData.daily)
+            const allDates = new Set([...Object.keys(workoutData.daily), ...Object.keys(workoutData.weights)]);
+            const sortedDates = [...allDates]
                 .filter(date => {
                     const dateObj = new Date(date);
                     return dateObj >= thirtyDaysAgo && dateObj <= today;
                 })
-                .sort((a, b) => new Date(b) - new Date(a)); // Most recent first
+                .sort((a, b) => new Date(b) - new Date(a));
             
             sortedDates.forEach(date => {
                 const dayData = workoutData.daily[date];
-                const totalSets = dayData[20] + dayData[30] + dayData[40] + dayData[50];
-                const totalReps = (dayData[20] * 20) + (dayData[30] * 30) + (dayData[40] * 40) + (dayData[50] * 50);
+                const counts = dayData ? dayData.counts : {};
+                const repKeys = Object.keys(counts).map(Number).sort((a, b) => a - b);
+                const totalSets = repKeys.reduce((sum, r) => sum + counts[r], 0);
+                const totalReps = repKeys.reduce((sum, r) => sum + (r * counts[r]), 0);
                 const weight = workoutData.weights[date];
                 
                 if (totalSets > 0 || weight) {
@@ -633,13 +676,16 @@
                         day: 'numeric' 
                     });
                     
-                    let weightInfo = weight ? ` | Weight: ${weight} lbs` : '';
+                    const weightInfo = weight ? ` | Weight: ${weight} lbs` : '';
+                    const setsBreakdown = repKeys.length
+                        ? repKeys.map(r => `${r}×${counts[r]}`).join(', ')
+                        : 'None';
                     
                     historyHTML += `
                         <div class="history-entry">
                             <div class="history-date">${formattedDate}</div>
                             <div class="history-details">
-                                Sets: 20×${dayData ? dayData[20] : 0}, 30×${dayData ? dayData[30] : 0}, 40×${dayData ? dayData[40] : 0}, 50×${dayData ? dayData[50] : 0} | 
+                                Sets: ${setsBreakdown} | 
                                 Total: ${totalSets} sets, ${totalReps.toLocaleString()} reps${weightInfo}
                             </div>
                         </div>
@@ -657,14 +703,10 @@
         // Reset today's data
         function resetToday() {
             if (confirm('Are you sure you want to reset today\'s data?')) {
-                const today = new Date().toISOString().split('T')[0];
-                workoutData.current = { 20: 0, 30: 0, 40: 0, 50: 0 };
-                if (workoutData.daily[today]) {
-                    delete workoutData.daily[today];
-                }
-                if (workoutData.weights[today]) {
-                    delete workoutData.weights[today];
-                }
+                const today = todayISO();
+                delete workoutData.daily[today];
+                delete workoutData.weights[today];
+                document.getElementById('custom-reps-input').value = '';
                 updateDisplay();
                 updateHistory();
                 updateWeightDisplay();
@@ -677,11 +719,11 @@
             if (confirm('Are you sure you want to clear ALL workout data? This cannot be undone.')) {
                 workoutData = {
                     daily: {},
-                    current: { 20: 0, 30: 0, 40: 0, 50: 0 },
                     weights: {},
-                    challengeStart: new Date().toISOString().split('T')[0],
+                    challengeStart: todayISO(),
                     targetWeight: 135
                 };
+                document.getElementById('custom-reps-input').value = '';
                 updateDisplay();
                 updateHistory();
                 updateWeightDisplay();
@@ -690,20 +732,22 @@
             }
         }
 
-        // Export data as text
+        // Export data as text (this exact format is what Import expects back)
         function exportData() {
             let exportText = 'Fitness Tally Tracker - Workout Data Export\n';
             exportText += 'Challenge Goal: Reach 135lbs in 20 days\n';
-            exportText += '=' .repeat(50) + '\n\n';
+            exportText += '='.repeat(50) + '\n\n';
             
-            const sortedDates = Object.keys(workoutData.daily).sort((a, b) => new Date(b) - new Date(a));
-            const allDatesWithData = [...new Set([...sortedDates, ...Object.keys(workoutData.weights)])].sort((a, b) => new Date(b) - new Date(a));
+            const allDates = new Set([...Object.keys(workoutData.daily), ...Object.keys(workoutData.weights)]);
+            const sortedDates = [...allDates].sort((a, b) => new Date(b) - new Date(a));
             
-            allDatesWithData.forEach(date => {
+            sortedDates.forEach(date => {
                 const dayData = workoutData.daily[date];
+                const counts = dayData ? dayData.counts : {};
+                const repKeys = Object.keys(counts).map(Number).sort((a, b) => a - b);
+                const totalSets = repKeys.reduce((sum, r) => sum + counts[r], 0);
+                const totalReps = repKeys.reduce((sum, r) => sum + (r * counts[r]), 0);
                 const weight = workoutData.weights[date];
-                const totalSets = dayData ? (dayData[20] + dayData[30] + dayData[40] + dayData[50]) : 0;
-                const totalReps = dayData ? ((dayData[20] * 20) + (dayData[30] * 30) + (dayData[40] * 40) + (dayData[50] * 50)) : 0;
                 
                 if (totalSets > 0 || weight) {
                     const dateObj = new Date(date);
@@ -718,27 +762,116 @@
                     if (weight) {
                         exportText += `Weight: ${weight} lbs\n`;
                     }
-                    if (dayData) {
-                        exportText += `20 reps: ${dayData[20]} sets\n`;
-                        exportText += `30 reps: ${dayData[30]} sets\n`;
-                        exportText += `40 reps: ${dayData[40]} sets\n`;
-                        exportText += `50 reps: ${dayData[50]} sets\n`;
+                    repKeys.forEach(r => {
+                        exportText += `${r} reps: ${counts[r]} sets\n`;
+                    });
+                    if (repKeys.length) {
                         exportText += `Total: ${totalSets} sets, ${totalReps} reps\n`;
                     }
                     exportText += '\n';
                 }
             });
             
-            // Create and download the file
             const blob = new Blob([exportText], { type: 'text/plain' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `fitness-challenge-export-${new Date().toISOString().split('T')[0]}.txt`;
+            a.download = `fitness-challenge-export-${todayISO()}.txt`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
+        }
+
+        // Parse an exported .txt file's contents back into workoutData
+        // Returns the number of day-blocks successfully imported
+        function importDataFromText(text) {
+            const lines = text.split(/\r?\n/);
+            let i = 0;
+
+            // Skip everything up to and including the "====" separator line
+            while (i < lines.length && !lines[i].trim().startsWith('===')) i++;
+            i++; // move past the separator line itself
+
+            let importedDates = 0;
+
+            while (i < lines.length) {
+                // Skip blank lines between blocks
+                while (i < lines.length && lines[i].trim() === '') i++;
+                if (i >= lines.length) break;
+
+                const dateLine = lines[i].trim();
+                i++;
+
+                const dateObj = new Date(dateLine);
+                if (isNaN(dateObj.getTime())) {
+                    // Not a recognizable date line — skip to the next blank line and keep going
+                    while (i < lines.length && lines[i].trim() !== '') i++;
+                    continue;
+                }
+
+                const dateISO = toISODateLocal(dateObj);
+                const dayCounts = {};
+                let weight = null;
+
+                while (i < lines.length && lines[i].trim() !== '') {
+                    const line = lines[i].trim();
+                    let m;
+                    if ((m = line.match(/^Weight:\s*([\d.]+)\s*lbs$/i))) {
+                        weight = parseFloat(m[1]);
+                    } else if ((m = line.match(/^(\d+)\s*reps:\s*(\d+)\s*sets$/i))) {
+                        const reps = Number(m[1]);
+                        const sets = Number(m[2]);
+                        if (sets > 0) dayCounts[reps] = sets;
+                    }
+                    // "Total:" lines and anything else are ignored — they're recomputed
+                    i++;
+                }
+
+                if (weight !== null) {
+                    workoutData.weights[dateISO] = weight;
+                }
+                if (Object.keys(dayCounts).length > 0) {
+                    if (!workoutData.daily[dateISO]) {
+                        workoutData.daily[dateISO] = { counts: {}, entries: [] };
+                    }
+                    Object.keys(dayCounts).forEach(r => {
+                        workoutData.daily[dateISO].counts[r] = dayCounts[r];
+                    });
+                }
+                if (weight !== null || Object.keys(dayCounts).length > 0) {
+                    importedDates++;
+                }
+            }
+
+            return importedDates;
+        }
+
+        // File input handler for the Import button
+        function handleImportFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const count = importDataFromText(e.target.result);
+                    if (count === 0) {
+                        alert('No recognizable data found in that file. Make sure it\'s a file exported from this tracker.');
+                    } else {
+                        updateDisplay();
+                        updateHistory();
+                        updateWeightDisplay();
+                        updateProgressBar();
+                        updateMotivation();
+                        alert(`Import complete! Loaded data for ${count} day(s).`);
+                    }
+                } catch (err) {
+                    alert('Failed to import file. Please make sure it\'s a valid export file.');
+                }
+                event.target.value = ''; // allow re-importing the same file if needed
+            };
+            reader.readAsText(file);
         }
 
         // Cleanup old data (older than 30 days)
@@ -762,7 +895,6 @@
             loadData();
             cleanupOldData();
             
-            // Clean up old data daily
             setInterval(cleanupOldData, 24 * 60 * 60 * 1000);
         });
     </script>
