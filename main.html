@@ -1,118 +1,88 @@
-<script>
-        // Data storage object
-        let workoutData = {
-            daily: {},
-            weights: {},
-            challengeStart: todayISO(),
-            targetWeight: 135
-        };
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fitness Tally Tracker</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Arial', sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; background: rgba(255, 255, 255, 0.95); border-radius: 20px; padding: 30px; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1); }
+        .header { text-align: center; margin-bottom: 30px; }
+        .tally-section { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 20px; margin-bottom: 30px; }
+        .tally-card { background: #f9f9f9; border-radius: 15px; padding: 25px; text-align: center; box-shadow: 0 8px 16px rgba(0,0,0,0.1); }
+        .count-display { font-size: 2.5rem; color: #667eea; margin: 10px 0; }
+        .tally-btn, .control-btn, .weight-btn { background: #667eea; color: white; border: none; padding: 10px 20px; border-radius: 25px; cursor: pointer; }
+        .controls { display: flex; justify-content: center; gap: 10px; margin-bottom: 20px; }
+        .progress-bar { background: #eee; height: 20px; border-radius: 10px; overflow: hidden; margin: 10px 0; }
+        .progress-fill { background: #4CAF50; height: 100%; width: 0%; transition: width 0.3s; }
+        .history-entry { background: #fff; padding: 10px; margin-bottom: 5px; border-left: 4px solid #667eea; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>💪 Fitness Tally Tracker</h1>
+        </div>
 
-        const motivationalQuotes = [
-            "Every rep brings you closer to your goal! 💪",
-            "135lbs is not just a number, it's your victory waiting to happen! 🏆",
-            "Your body can do it. It's your mind you have to convince! 🧠",
-            "Success isn't given. It's earned in the gym! 🔥",
-            "The pain you feel today will be the strength you feel tomorrow! ⚡"
-        ];
+        <div class="tally-section">
+            <div class="tally-card"><h3>20 Reps</h3><div class="count-display" id="count-20">0</div><button class="tally-btn" onclick="addTally(20)">+ Add</button></div>
+            <div class="tally-card"><h3>30 Reps</h3><div class="count-display" id="count-30">0</div><button class="tally-btn" onclick="addTally(30)">+ Add</button></div>
+            <div class="tally-card"><h3>Custom</h3><input type="number" id="custom-reps-input" style="width:100%;" placeholder="Reps"><button class="tally-btn" onclick="addCustomTally()">+ Add</button></div>
+        </div>
 
-        function pad2(n) { return n < 10 ? '0' + n : '' + n; }
-        function toISODateLocal(d) {
-            return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-        }
-        function todayISO() { return toISODateLocal(new Date()); }
+        <div class="challenge-section" style="background:#fff; padding:20px; border-radius:15px;">
+            <h2>🏆 Goal Progress</h2>
+            <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+            <p id="progress-text">Log weight to start</p>
+        </div>
 
-        function calculateDaysRemaining() {
-            const startDate = new Date(workoutData.challengeStart);
-            const targetDate = new Date(startDate.getTime() + (20 * 24 * 60 * 60 * 1000));
-            const today = new Date();
-            const diffTime = targetDate - today;
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-            return Math.max(0, diffDays);
-        }
+        <div class="controls" style="margin-top:20px;">
+            <button class="control-btn" onclick="exportData()">Export Data</button>
+            <button class="control-btn" onclick="document.getElementById('import-file-input').click()">Import Data</button>
+            <input type="file" id="import-file-input" style="display:none" onchange="handleImportFile(event)">
+        </div>
 
-        function logWeight() {
-            const weightInput = document.getElementById('weight-input');
-            const weight = parseFloat(weightInput.value);
-            if (!weight || weight <= 0) { alert('Please enter a valid weight!'); return; }
-            workoutData.weights[todayISO()] = weight;
-            weightInput.value = '';
-            updateWeightDisplay();
-            updateProgressBar();
-            updateMotivation();
-        }
+        <div class="history-section">
+            <h3>History</h3>
+            <div id="history-list"></div>
+        </div>
+    </div>
 
-        function updateWeightDisplay() {
-            const currentWeightElement = document.getElementById('current-weight');
-            const weight = workoutData.weights[todayISO()];
-            currentWeightElement.textContent = weight ? `Today's Weight: ${weight} lbs` : 'No weight logged today';
-        }
+    <script>
+        let workoutData = { daily: {}, weights: {}, targetWeight: 135 };
 
-        function updateProgressBar() {
-            const today = todayISO();
-            const currentWeight = workoutData.weights[today];
-            const progressFill = document.getElementById('progress-fill');
-            const progressText = document.getElementById('progress-text');
-            
-            if (currentWeight) {
-                const sortedDates = Object.keys(workoutData.weights).sort();
-                const startWeight = workoutData.weights[sortedDates[0]] || currentWeight;
-                const totalToGoal = Math.abs(workoutData.targetWeight - startWeight);
-                const progressSoFar = Math.abs(currentWeight - startWeight);
-                const percent = totalToGoal > 0 ? Math.min(100, (progressSoFar / totalToGoal) * 100) : 100;
-                
-                progressFill.style.width = `${percent}%`;
-                progressText.textContent = `${progressSoFar.toFixed(1)} lbs progress toward goal`;
-            } else {
-                progressFill.style.width = '0%';
-                progressText.textContent = 'Log your weight to see progress!';
-            }
-        }
-
-        function updateMotivation() {
-            const daysLeft = calculateDaysRemaining();
-            document.getElementById('countdown').textContent = daysLeft;
-            document.getElementById('motivation-quote').textContent = motivationalQuotes[Math.floor(Math.random() * motivationalQuotes.length)];
-        }
+        function todayISO() { return new Date().toISOString().split('T')[0]; }
 
         function addTally(reps) {
             const today = todayISO();
             if (!workoutData.daily[today]) workoutData.daily[today] = { counts: {} };
             workoutData.daily[today].counts[reps] = (workoutData.daily[today].counts[reps] || 0) + 1;
             updateDisplay();
-            updateHistory();
         }
 
         function addCustomTally() {
-            const input = document.getElementById('custom-reps-input');
-            const reps = parseInt(input.value, 10);
-            if (reps > 0) addTally(reps);
+            const val = parseInt(document.getElementById('custom-reps-input').value);
+            if (val > 0) addTally(val);
         }
 
         function updateDisplay() {
             const today = todayISO();
             const counts = workoutData.daily[today]?.counts || {};
-            [20, 30, 40, 50].forEach(r => document.getElementById(`count-${r}`).textContent = counts[r] || 0);
-            let total = 0;
-            Object.keys(counts).forEach(r => total += Number(r) * counts[r]);
-            document.getElementById('total-reps').textContent = total;
+            [20, 30].forEach(r => document.getElementById(`count-${r}`).textContent = counts[r] || 0);
+            updateHistory();
         }
 
         function updateHistory() {
-            const historyList = document.getElementById('history-list');
-            const dates = Object.keys(workoutData.daily).sort().reverse();
-            historyList.innerHTML = dates.length ? '' : '<div class="no-data">No data yet.</div>';
-            dates.forEach(date => {
-                const day = workoutData.daily[date].counts;
-                historyList.innerHTML += `<div class="history-entry"><strong>${date}</strong>: ${JSON.stringify(day)}</div>`;
-            });
+            const list = document.getElementById('history-list');
+            list.innerHTML = Object.keys(workoutData.daily).map(d => `<div class="history-entry">${d}: ${JSON.stringify(workoutData.daily[d].counts)}</div>`).join('');
         }
 
         function exportData() {
-            const blob = new Blob([JSON.stringify(workoutData)], { type: 'text/plain' });
-            const url = URL.createObjectURL(blob);
+            const blob = new Blob([JSON.stringify(workoutData)], {type: 'application/json'});
             const a = document.createElement('a');
-            a.href = url;
-            a.download = 'fitness-data.json';
+            a.href = URL.createObjectURL(blob);
+            a.download = 'fitness_data.json';
             a.click();
         }
 
@@ -124,19 +94,12 @@
                 try {
                     workoutData = JSON.parse(e.target.result);
                     updateDisplay();
-                    updateHistory();
-                    updateWeightDisplay();
-                    updateProgressBar();
-                    updateMotivation();
-                    alert('Import Successful!');
-                } catch (err) {
-                    alert('Error parsing file.');
-                }
+                    alert('Data imported successfully!');
+                } catch (err) { alert('Invalid file format'); }
             };
             reader.readAsText(file);
-            event.target.value = ''; // Reset input
+            event.target.value = ''; 
         }
-
-        // Initialize
-        updateMotivation();
     </script>
+</body>
+</html>
