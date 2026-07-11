@@ -69,6 +69,53 @@
             background: linear-gradient(145deg, #f44336, #d32f2f);
         }
 
+        .rep-customizer {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .rep-customizer input {
+            padding: 10px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 20px;
+            font-size: 1rem;
+            width: 140px;
+            text-align: center;
+        }
+
+        .rep-customizer input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .rep-customizer button {
+            background: linear-gradient(145deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+        }
+
+        .rep-customizer button:hover {
+            transform: translateY(-2px);
+        }
+
+        .rep-customizer-hint {
+            width: 100%;
+            text-align: center;
+            color: #888;
+            font-size: 0.8rem;
+            margin-top: -6px;
+        }
+
         .tally-section {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -77,6 +124,7 @@
         }
 
         .tally-card {
+            position: relative;
             background: linear-gradient(145deg, #f0f0f0, #ffffff);
             border-radius: 15px;
             padding: 25px;
@@ -90,6 +138,10 @@
             transform: translateY(-5px);
             box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15);
             border-color: #667eea;
+        }
+
+        .tally-card:hover .remove-level-btn {
+            opacity: 1;
         }
 
         .tally-card h3 {
@@ -130,12 +182,35 @@
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
         }
 
+        .remove-level-btn {
+            position: absolute;
+            top: 8px;
+            right: 10px;
+            background: none;
+            border: none;
+            color: #bbb;
+            font-size: 1.1rem;
+            font-weight: bold;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.2s ease, color 0.2s ease;
+            line-height: 1;
+            padding: 4px;
+        }
+
+        .remove-level-btn:hover {
+            color: #ff6b6b;
+        }
+
         .tally-btn:focus-visible,
         .control-btn:focus-visible,
         .import-btn:focus-visible,
-        .weight-btn:focus-visible {
+        .weight-btn:focus-visible,
+        .rep-customizer button:focus-visible,
+        .remove-level-btn:focus-visible {
             outline: 3px solid #333;
             outline-offset: 2px;
+            opacity: 1;
         }
 
         .controls {
@@ -501,27 +576,14 @@
             </div>
         </div>
 
-        <div class="tally-section">
-            <div class="tally-card">
-                <h3>20 Reps</h3>
-                <div class="count-display" id="count-20">0</div>
-                <button class="tally-btn" onclick="addTally(20)">+ Add Set</button>
-            </div>
-            <div class="tally-card">
-                <h3>30 Reps</h3>
-                <div class="count-display" id="count-30">0</div>
-                <button class="tally-btn" onclick="addTally(30)">+ Add Set</button>
-            </div>
-            <div class="tally-card">
-                <h3>40 Reps</h3>
-                <div class="count-display" id="count-40">0</div>
-                <button class="tally-btn" onclick="addTally(40)">+ Add Set</button>
-            </div>
-            <div class="tally-card">
-                <h3>50 Reps</h3>
-                <div class="count-display" id="count-50">0</div>
-                <button class="tally-btn" onclick="addTally(50)">+ Add Set</button>
-            </div>
+        <div class="rep-customizer">
+            <input type="number" id="custom-rep-input" min="1" max="999" step="1" placeholder="e.g. 15">
+            <button onclick="addRepLevel()">+ Add Rep Level</button>
+            <div class="rep-customizer-hint">Hover a card and click × to remove a level. Past history is never affected.</div>
+        </div>
+
+        <div class="tally-section" id="tally-section">
+            <!-- Tally cards are rendered by JS based on workoutData.repLevels -->
         </div>
 
         <div class="challenge-section">
@@ -596,7 +658,8 @@
         // ============ CONSTANTS ============
         const STORAGE_KEY = 'fitnessTallyTracker.v1';
         const CHALLENGE_LENGTH_DAYS = 20;
-        const REP_LEVELS = [20, 30, 40, 50];
+        const DEFAULT_REP_LEVELS = [20, 30, 40, 50];
+        const MAX_REP_LEVELS = 16;
 
         const motivationalQuotes = [
             "Every rep brings you closer to your goal! 💪",
@@ -617,15 +680,17 @@
         ];
 
         // ============ STATE ============
-        // daily[date] = { 20, 30, 40, 50, entries: [{reps, timestamp}] }
-        // weights[date] = [{weight, timestamp, time}]
+        // daily[date]   = { entries: [{ reps, timestamp }] }   <- single source of truth, no separate counts
+        // weights[date] = [{ weight, timestamp, time }]
+        // repLevels     = which rep-count buttons/cards are shown (purely UI config, doesn't affect past entries)
         function defaultData() {
             return {
                 daily: {},
                 weights: {},
+                repLevels: [...DEFAULT_REP_LEVELS],
                 challengeStart: new Date().toISOString().split('T')[0],
                 targetWeight: 135,
-                appVersion: '1.4.0',
+                appVersion: '1.5.0',
                 lastModified: new Date().toISOString()
             };
         }
@@ -637,6 +702,7 @@
             try {
                 loadFromStorage();
                 ensureToday();
+                renderTallyCards();
                 renderAll();
             } catch (error) {
                 console.error('Initialization error:', error);
@@ -651,7 +717,7 @@
         function ensureToday() {
             const today = todayKey();
             if (!workoutData.daily[today]) {
-                workoutData.daily[today] = { 20: 0, 30: 0, 40: 0, 50: 0, entries: [] };
+                workoutData.daily[today] = { entries: [] };
             }
             if (!workoutData.weights[today]) {
                 workoutData.weights[today] = [];
@@ -664,6 +730,83 @@
             updateProgressBar();
             updateMotivation();
             updateHistory();
+        }
+
+        // ============ REP LEVEL CUSTOMIZATION ============
+        function renderTallyCards() {
+            const section = document.getElementById('tally-section');
+            section.innerHTML = '';
+
+            workoutData.repLevels.forEach(level => {
+                const card = document.createElement('div');
+                card.className = 'tally-card';
+
+                const removeBtn = document.createElement('button');
+                removeBtn.className = 'remove-level-btn';
+                removeBtn.setAttribute('aria-label', `Remove ${level} rep level`);
+                removeBtn.textContent = '×';
+                removeBtn.onclick = () => removeRepLevel(level);
+
+                const heading = document.createElement('h3');
+                heading.textContent = `${level} Reps`;
+
+                const countDisplay = document.createElement('div');
+                countDisplay.className = 'count-display';
+                countDisplay.id = `count-${level}`;
+                countDisplay.textContent = '0';
+
+                const btn = document.createElement('button');
+                btn.className = 'tally-btn';
+                btn.textContent = '+ Add Set';
+                btn.onclick = () => addTally(level);
+
+                card.appendChild(removeBtn);
+                card.appendChild(heading);
+                card.appendChild(countDisplay);
+                card.appendChild(btn);
+                section.appendChild(card);
+            });
+        }
+
+        function addRepLevel() {
+            const input = document.getElementById('custom-rep-input');
+            const value = parseInt(input.value, 10);
+
+            if (!value || value <= 0 || value > 999) {
+                showNotification('Enter a rep count between 1 and 999.', 'warning');
+                return;
+            }
+            if (workoutData.repLevels.includes(value)) {
+                showNotification(`${value} reps is already one of your levels.`, 'warning');
+                return;
+            }
+            if (workoutData.repLevels.length >= MAX_REP_LEVELS) {
+                showNotification(`You can have up to ${MAX_REP_LEVELS} rep levels.`, 'warning');
+                return;
+            }
+
+            workoutData.repLevels.push(value);
+            workoutData.repLevels.sort((a, b) => a - b);
+            input.value = '';
+
+            saveToStorage();
+            renderTallyCards();
+            updateDisplay();
+            showNotification(`Added a ${value}-rep level!`, 'success');
+        }
+
+        function removeRepLevel(level) {
+            if (workoutData.repLevels.length <= 1) {
+                showNotification('Keep at least one rep level.', 'warning');
+                return;
+            }
+            if (!confirm(`Remove the ${level}-rep card? Past history with ${level} reps is kept - this only hides the button.`)) return;
+
+            workoutData.repLevels = workoutData.repLevels.filter(l => l !== level);
+            saveToStorage();
+            renderTallyCards();
+            updateDisplay();
+            showNotification(`Removed the ${level}-rep level.`, 'success');
         }
 
         // ============ PERSISTENCE (localStorage) ============
@@ -710,12 +853,14 @@
 
         // ============ VALIDATION (shared by load + import) ============
         // Returns a clean workoutData object, or null if input isn't usable.
+        // Accepts both the current entries-only schema and the older schema that
+        // stored per-rep counts directly on the day object (e.g. day["20"] = 3),
+        // so existing saved/exported files from earlier versions still import fine.
         function validateAndNormalize(data) {
             if (!data || typeof data !== 'object') return null;
 
             const result = defaultData();
 
-            // challengeStart / targetWeight, with sane fallbacks
             if (typeof data.challengeStart === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(data.challengeStart)) {
                 result.challengeStart = data.challengeStart;
             }
@@ -723,22 +868,39 @@
                 result.targetWeight = data.targetWeight;
             }
 
+            // rep levels
+            if (Array.isArray(data.repLevels)) {
+                const clean = [...new Set(data.repLevels)]
+                    .filter(v => typeof v === 'number' && v > 0 && v <= 999)
+                    .map(v => Math.floor(v))
+                    .sort((a, b) => a - b)
+                    .slice(0, MAX_REP_LEVELS);
+                if (clean.length > 0) result.repLevels = clean;
+            }
+
             // daily
             if (data.daily && typeof data.daily === 'object') {
                 for (const [date, day] of Object.entries(data.daily)) {
                     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
                     if (!day || typeof day !== 'object') continue;
-                    const cleanDay = { 20: 0, 30: 0, 40: 0, 50: 0, entries: [] };
-                    REP_LEVELS.forEach(level => {
-                        const val = day[level];
-                        cleanDay[level] = (typeof val === 'number' && val >= 0) ? Math.floor(val) : 0;
-                    });
+
+                    let entries = [];
                     if (Array.isArray(day.entries)) {
-                        cleanDay.entries = day.entries
-                            .filter(e => e && REP_LEVELS.includes(e.reps) && typeof e.timestamp === 'string')
-                            .map(e => ({ reps: e.reps, timestamp: e.timestamp }));
+                        entries = day.entries
+                            .filter(e => e && typeof e.reps === 'number' && e.reps > 0 && e.reps <= 999 && typeof e.timestamp === 'string')
+                            .map(e => ({ reps: Math.floor(e.reps), timestamp: e.timestamp }));
+                    } else {
+                        // legacy schema fallback: reconstruct synthetic entries from flat counts
+                        for (const [key, val] of Object.entries(day)) {
+                            const reps = parseInt(key, 10);
+                            if (!Number.isNaN(reps) && typeof val === 'number' && val > 0) {
+                                for (let i = 0; i < Math.floor(val); i++) {
+                                    entries.push({ reps, timestamp: `${date}T00:00:00.000Z#legacy${i}` });
+                                }
+                            }
+                        }
                     }
-                    result.daily[date] = cleanDay;
+                    result.daily[date] = { entries };
                 }
             }
 
@@ -766,7 +928,6 @@
                 ensureToday();
                 const today = todayKey();
 
-                workoutData.daily[today][reps] = (workoutData.daily[today][reps] || 0) + 1;
                 workoutData.daily[today].entries.push({
                     reps: reps,
                     timestamp: new Date().toISOString()
@@ -782,6 +943,14 @@
                 console.error('Error adding tally:', error);
                 showNotification('Error adding set. Please try again.', 'error');
             }
+        }
+
+        function countsForDay(day) {
+            const counts = {};
+            (day ? day.entries : []).forEach(entry => {
+                counts[entry.reps] = (counts[entry.reps] || 0) + 1;
+            });
+            return counts;
         }
 
         // ============ WEIGHT ============
@@ -861,11 +1030,14 @@
             try {
                 ensureToday();
                 const today = workoutData.daily[todayKey()];
-                REP_LEVELS.forEach(level => {
-                    document.getElementById(`count-${level}`).textContent = today[level] || 0;
+                const counts = countsForDay(today);
+
+                workoutData.repLevels.forEach(level => {
+                    const el = document.getElementById(`count-${level}`);
+                    if (el) el.textContent = counts[level] || 0;
                 });
 
-                const totalReps = REP_LEVELS.reduce((sum, level) => sum + (today[level] || 0) * level, 0);
+                const totalReps = today.entries.reduce((sum, e) => sum + e.reps, 0);
                 document.getElementById('total-reps').textContent = totalReps.toLocaleString();
             } catch (error) {
                 console.error('Error updating display:', error);
@@ -947,7 +1119,6 @@
                 const progressText = document.getElementById('progress-text');
                 const target = workoutData.targetWeight;
 
-                // find the earliest logged weight to use as a start-of-challenge baseline
                 const allDates = Object.keys(workoutData.weights).sort();
                 let startWeight = null;
                 for (const date of allDates) {
@@ -1024,25 +1195,18 @@
                 relevantDates.forEach(date => {
                     const day = workoutData.daily[date];
                     const weights = workoutData.weights[date] || [];
+                    const counts = countsForDay(day);
+                    const repKeys = Object.keys(counts).map(Number).sort((a, b) => a - b);
 
-                    const totalReps = day
-                        ? REP_LEVELS.reduce((sum, level) => sum + (day[level] || 0) * level, 0)
-                        : 0;
-                    const totalSets = day
-                        ? REP_LEVELS.reduce((sum, level) => sum + (day[level] || 0), 0)
-                        : 0;
+                    const totalReps = day ? day.entries.reduce((sum, e) => sum + e.reps, 0) : 0;
+                    const totalSets = day ? day.entries.length : 0;
 
                     if (totalSets === 0 && weights.length === 0) return;
 
                     const entry = document.createElement('div');
                     entry.className = 'history-entry';
 
-                    const setBreakdown = day
-                        ? REP_LEVELS
-                            .filter(level => (day[level] || 0) > 0)
-                            .map(level => `${day[level]}× ${level}-rep`)
-                            .join(', ')
-                        : '';
+                    const setBreakdown = repKeys.map(level => `${counts[level]}× ${level}-rep`).join(', ');
 
                     let html = `<div class="history-date">${formatDate(date)}</div>`;
                     html += `<div class="history-details">${totalSets > 0 ? `${totalSets} sets (${totalReps} reps) - ${setBreakdown}` : 'No sets logged'}</div>`;
@@ -1078,7 +1242,7 @@
         function resetToday() {
             if (!confirm("Reset today's sets and weight entries? This can't be undone.")) return;
             const today = todayKey();
-            workoutData.daily[today] = { 20: 0, 30: 0, 40: 0, 50: 0, entries: [] };
+            workoutData.daily[today] = { entries: [] };
             workoutData.weights[today] = [];
             saveToStorage();
             renderAll();
@@ -1090,6 +1254,7 @@
             workoutData = defaultData();
             ensureToday();
             saveToStorage();
+            renderTallyCards();
             renderAll();
             showNotification('All data cleared.', 'success');
         }
@@ -1177,6 +1342,7 @@
 
                 ensureToday();
                 saveToStorage();
+                renderTallyCards();
                 renderAll();
                 showNotification('Data imported successfully! 🎉', 'success');
             };
@@ -1185,11 +1351,11 @@
         }
 
         // Merge an imported dataset into the current one.
-        // Per-day rep counts and weight entries are summed/concatenated and de-duplicated by timestamp.
+        // Entries are concatenated and de-duplicated by timestamp; rep levels are unioned.
         function mergeWorkoutData(incoming) {
             for (const [date, day] of Object.entries(incoming.daily)) {
                 if (!workoutData.daily[date]) {
-                    workoutData.daily[date] = { 20: 0, 30: 0, 40: 0, 50: 0, entries: [] };
+                    workoutData.daily[date] = { entries: [] };
                 }
                 const existing = workoutData.daily[date];
                 const existingTimestamps = new Set(existing.entries.map(e => e.timestamp));
@@ -1200,12 +1366,7 @@
                         existingTimestamps.add(entry.timestamp);
                     }
                 });
-
-                // recompute counts from the merged entry list so counts and entries never drift apart
-                REP_LEVELS.forEach(level => { existing[level] = 0; });
-                existing.entries.forEach(entry => {
-                    if (REP_LEVELS.includes(entry.reps)) existing[entry.reps]++;
-                });
+                existing.entries.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
             }
 
             for (const [date, entries] of Object.entries(incoming.weights)) {
@@ -1222,7 +1383,10 @@
                 workoutData.weights[date].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
             }
 
-            // keep whichever challenge start is earlier, so an imported history doesn't reset progress
+            workoutData.repLevels = [...new Set([...workoutData.repLevels, ...incoming.repLevels])]
+                .sort((a, b) => a - b)
+                .slice(0, MAX_REP_LEVELS);
+
             if (incoming.challengeStart && incoming.challengeStart < workoutData.challengeStart) {
                 workoutData.challengeStart = incoming.challengeStart;
             }
